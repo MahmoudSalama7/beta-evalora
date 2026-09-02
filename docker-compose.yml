@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: evalora_postgres
+    environment:
+      POSTGRES_USER: evalora
+      POSTGRES_PASSWORD: evalorasecret
+      POSTGRES_DB: evalora_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: evalora_qdrant
+    ports:
+      - "6333:6333" # REST API & Web UI (http://localhost:6333/dashboard)
+      - "6334:6334" # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  redis:
+    image: redis:7-alpine
+    container_name: evalora_redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:
+  qdrant_data:
