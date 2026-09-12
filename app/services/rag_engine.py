@@ -190,17 +190,55 @@ async def generate_grounded_questions(
 ) -> List[str]:
     """
     Generate role-specific interview questions by querying Qdrant context chunks
-    and combining them with extracted skills and technical requirements.
+    and combining them with extracted skills & requirements using Groq LLM.
     """
+    import os
+    import json
+
     skills = extracted_metadata.get("skills", ["General Technical Skills"])
     reqs = extracted_metadata.get("technical_requirements", [])
     
     # Retrieve technical context chunks from Qdrant under job_id
     query_str = f"Technical requirements and skills: {', '.join(skills)}"
     retrieved_chunks = await retrieve_ground_truth_context(job_id, query_str, limit=3)
-    
     context_text = "\n---\n".join(retrieved_chunks) if retrieved_chunks else "No additional context."
     
+    groq_api_key = os.getenv("GROQ_API_KEY")
+    groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+    
+    if groq_api_key:
+        try:
+            from groq import Groq
+            client = Groq(api_key=groq_api_key)
+            prompt = f"""
+            You are an expert technical interviewer designing a role-specific technical assessment.
+            
+            Target Position Skills: {', '.join(skills)}
+            Technical Requirements: {', '.join(reqs)}
+            Grounding Context Chunks:
+            {context_text}
+
+            Generate exactly {count} open-ended, deep technical interview questions that test practical experience, architectural design, and problem solving.
+            Return a JSON object with key "questions" containing a list of strings.
+            """
+            chat_completion = client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": "You are a senior technical interviewer AI. Output valid JSON only."},
+                    {"role": "user", "content": prompt}
+                ],
+                model=groq_model,
+                response_format={"type": "json_object"}
+            )
+            raw_text = chat_completion.choices[0].message.content.strip()
+            data = json.loads(raw_text)
+            qs = data.get("questions", [])
+            if qs and len(qs) >= count:
+                logger.info("Successfully generated grounded interview questions via Groq LLM.")
+                return qs[:count]
+        except Exception as e:
+            logger.warning(f"Groq question generation warning ({e}). Using template fallback.")
+
     questions = []
     
     # Question 1: Skill specific
@@ -218,3 +256,4 @@ async def generate_grounded_questions(
     questions.append(f"Based on our technical requirements, how would you design a high-availability backend system handling real-time data processing?")
     
     return questions[:count]
+

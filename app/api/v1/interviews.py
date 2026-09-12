@@ -51,6 +51,14 @@ async def create_interview(
             status="in_progress"
         )
         db.add(interview)
+
+        # Update Candidate entity status & interview link
+        candidate = await db.get(Candidate, payload.candidate_id)
+        if candidate:
+            candidate.interview_id = interview_id
+            if candidate.status in ["applied", "link_sent"]:
+                candidate.status = "in_progress"
+
         await db.flush()
 
         # 3. Generate grounded questions from Qdrant + extracted metadata
@@ -102,20 +110,30 @@ async def get_candidate_interview_view(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Candidate interface view.
+    Candidate interface view. Supports resolving by interview_id, candidate_id, or invite_token.
     STRICT PRIVACY CONSTRAINT: MUST NOT return scores, turn evaluations, or judge feedback to candidate.
     """
     interview = await db.get(Interview, interview_id)
     if not interview:
+        cand_stmt = select(Candidate).where(
+            (Candidate.invite_token == interview_id) | (Candidate.id == interview_id)
+        )
+        cand_res = await db.execute(cand_stmt)
+        cand = cand_res.scalar_one_or_none()
+
+        if cand and cand.interview_id:
+            interview = await db.get(Interview, cand.interview_id)
+
+    if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Interview with ID '{interview_id}' not found."
+            detail=f"Interview session for '{interview_id}' not found."
         )
 
     # Find the current pending question (turn without answer)
     stmt = (
         select(InterviewTurn)
-        .where(InterviewTurn.interview_id == interview_id)
+        .where(InterviewTurn.interview_id == interview.id)
         .order_by(InterviewTurn.turn_index)
     )
     result = await db.execute(stmt)
@@ -135,6 +153,7 @@ async def get_candidate_interview_view(
         current_question=current_q,
         message="Interview in progress" if current_q else "Interview completed"
     )
+
 
 @router.get(
     "/{interview_id}/report",

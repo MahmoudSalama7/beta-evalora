@@ -49,41 +49,69 @@ def heuristic_extraction(description: str) -> Dict[str, Any]:
 
 async def extract_job_metadata(description: str) -> Dict[str, Any]:
     """
-    Extract structured metadata from plain-text job description.
+    Extract structured metadata from plain-text job description using Groq LLM (llama-3.3-70b-versatile).
     Returns JSON dictionary with:
     - skills: list[str]
     - technical_requirements: list[str]
     - seniority_level: str
     - core_responsibilities: list[str]
     """
-    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    
-    if api_key:
+    groq_api_key = os.getenv("GROQ_API_KEY")
+    groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+
+    if groq_api_key:
         try:
-            from google import genai
-            client = genai.Client(api_key=api_key)
+            from groq import Groq
+            client = Groq(api_key=groq_api_key)
             prompt = f"""
-            Analyze the following Job Description text and extract structured JSON output with these exact keys:
-            - "skills": list of technical skills and frameworks mentioned
+            Analyze the following Job Description text and extract structured JSON with these exact keys:
+            - "skills": list of technical skills, frameworks, and tools mentioned
             - "technical_requirements": list of technical experience and qualifications
             - "seniority_level": estimated seniority (e.g. Junior, Mid-Level, Senior, Lead)
             - "core_responsibilities": list of main duties and responsibilities
 
             Job Description:
             {description}
-
-            Return raw valid JSON ONLY without markdown formatting.
             """
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt
+            chat_completion = client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert HR technical interviewer AI. Output valid JSON only."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    }
+                ],
+                model=groq_model,
+                response_format={"type": "json_object"}
             )
+            raw_text = chat_completion.choices[0].message.content.strip()
+            data = json.loads(raw_text)
+            logger.info("Successfully extracted job metadata via Groq LLM.")
+            return {
+                "skills": data.get("skills", []),
+                "technical_requirements": data.get("technical_requirements", []),
+                "seniority_level": data.get("seniority_level", "Mid-Senior"),
+                "core_responsibilities": data.get("core_responsibilities", [])
+            }
+        except Exception as e:
+            logger.warning(f"Groq LLM metadata extraction failed ({e}). Trying fallback...")
+
+    # Fallback to Gemini if configured
+    gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if gemini_key:
+        try:
+            from google import genai
+            client = genai.Client(api_key=gemini_key)
+            prompt = f"Analyze Job Description and return JSON with skills, technical_requirements, seniority_level, core_responsibilities:\n{description}"
+            response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
             raw_text = response.text.strip()
-            # Clean markdown codeblocks if present
             if raw_text.startswith("```"):
                 raw_text = re.sub(r"^```[a-z]*\n?", "", raw_text)
                 raw_text = re.sub(r"\n?```$", "", raw_text)
-            
             data = json.loads(raw_text)
             return {
                 "skills": data.get("skills", []),
@@ -92,6 +120,7 @@ async def extract_job_metadata(description: str) -> Dict[str, Any]:
                 "core_responsibilities": data.get("core_responsibilities", [])
             }
         except Exception as e:
-            logger.warning(f"LLM metadata extraction failed or unavailable ({e}). Using heuristic extraction.")
+            logger.warning(f"Gemini LLM metadata extraction failed: {e}")
 
     return heuristic_extraction(description)
+

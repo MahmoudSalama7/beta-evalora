@@ -16,7 +16,9 @@ import {
   FileText,
   Clock,
   ShieldCheck,
-  AlertCircle
+  AlertCircle,
+  UploadCloud,
+  X
 } from "lucide-react";
 import { getJob, applyForJob, JobData } from "@/lib/api";
 
@@ -32,7 +34,9 @@ export default function CandidateJobApplyPage() {
   // Form state
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
 
   // Job description expand state
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
@@ -64,8 +68,9 @@ export default function CandidateJobApplyPage() {
     setError(null);
 
     try {
-      const res = await applyForJob(jobId, name.trim(), email.trim());
+      const res = await applyForJob(jobId, name.trim(), email.trim(), resumeFile);
       // Redirect candidate to interview room check screen
+
       router.push(`/interview/${res.invite_token}/check`);
     } catch (err: any) {
       console.error("Failed to submit application:", err);
@@ -302,6 +307,50 @@ export default function CandidateJobApplyPage() {
                     />
                   </div>
                 </div>
+
+                {/* Candidate Resume Upload (PDF) */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                    <span>Resume / CV (PDF / Doc)</span>
+                    <span className="text-[10px] text-indigo-400 font-normal">AI Match Scoring</span>
+                  </label>
+                  <div className="border border-dashed border-slate-800 hover:border-indigo-500/50 rounded-xl p-3.5 text-center transition-colors bg-slate-950/80 relative">
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          setResumeFile(e.target.files[0]);
+                        }
+                      }}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                    {resumeFile ? (
+                      <div className="flex items-center justify-between text-xs text-indigo-300 bg-indigo-950/40 p-2 rounded-lg border border-indigo-500/30">
+                        <div className="flex items-center gap-2 truncate">
+                          <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
+                          <span className="truncate max-w-[180px] font-medium">{resumeFile.name}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setResumeFile(null);
+                          }}
+                          className="text-slate-400 hover:text-rose-400"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-2 text-xs text-slate-400">
+                        <UploadCloud className="w-4 h-4 text-indigo-400" />
+                        <span>Upload Resume PDF (Drag & drop or click)</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
 
                 {error && (
                   <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs p-3 rounded-xl">

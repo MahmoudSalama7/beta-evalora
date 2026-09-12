@@ -205,11 +205,22 @@ export async function generateInterviewLink(jobId: string, candidateId: string):
   return response.json();
 }
 
-export async function applyForJob(jobId: string, name: string, email: string): Promise<GenerateLinkResponse> {
+export async function applyForJob(
+  jobId: string,
+  name: string,
+  email: string,
+  resumeFile?: File | null
+): Promise<GenerateLinkResponse> {
+  const formData = new FormData();
+  formData.append("name", name);
+  formData.append("email", email);
+  if (resumeFile) {
+    formData.append("resume", resumeFile);
+  }
+
   const response = await fetch(`${API_BASE}/jobs/${jobId}/apply`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, email }),
+    body: formData,
   });
 
   if (!response.ok) {
@@ -219,6 +230,7 @@ export async function applyForJob(jobId: string, name: string, email: string): P
 
   return response.json();
 }
+
 
 export async function getCandidateAIReport(jobId: string, candidateId: string): Promise<CandidateReportData> {
   const response = await fetch(`${API_BASE}/jobs/${jobId}/candidates/${candidateId}/report`, { cache: "no-store" });

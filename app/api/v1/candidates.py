@@ -1,6 +1,6 @@
 import uuid
-from typing import List
-from fastapi import APIRouter, HTTPException, Depends, status
+from typing import List, Optional
+from fastapi import APIRouter, HTTPException, Depends, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -13,6 +13,7 @@ from app.schemas.candidate import (
     CandidateApplyRequest
 )
 from app.services.seed_data import seed_candidates_for_job
+from app.services.resume_matcher import extract_resume_text, analyze_resume_match
 
 router = APIRouter(tags=["Candidates"])
 
@@ -107,18 +108,21 @@ async def generate_interview_link(
     "/jobs/{job_id}/apply",
     response_model=GenerateLinkResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Submit candidate application for a job position"
+    summary="Submit candidate application with optional CV PDF upload & Groq LLM skill comparison"
 )
 async def apply_for_job(
     job_id: str,
-    payload: CandidateApplyRequest,
+    name: str = Form(..., description="Candidate Full Name"),
+    email: str = Form(..., description="Candidate Email Address"),
+    resume: Optional[UploadFile] = File(default=None, description="Optional Candidate CV PDF"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Submit candidate application for a position:
-    1. Checks if job exists.
-    2. Registers candidate and generates interview invite token.
-    3. Returns invite token & URL to proceed to AI interview.
+    1. Parses uploaded CV PDF file (using pypdf text extraction).
+    2. Runs Groq LLM (llama-3.3-70b-versatile) skill comparison against job requirements.
+    3. Stores computed match score, matched skills, and missing skills in PostgreSQL.
+    4. Generates single-use interview invite token.
     """
     job = await db.get(Job, job_id)
     if not job:
@@ -127,14 +131,32 @@ async def apply_for_job(
             detail=f"Job with ID '{job_id}' not found."
         )
 
-    # Check if candidate with this email already applied for this job
-    stmt = select(Candidate).where(Candidate.job_id == job_id, Candidate.email == payload.email)
+    # 1. Parse uploaded CV text
+    resume_text = ""
+    if resume and resume.filename:
+        file_bytes = await resume.read()
+        resume_text = extract_resume_text(file_bytes, resume.filename)
+
+    # 2. Analyze skill comparison via Groq LLM
+    match_result = await analyze_resume_match(
+        candidate_name=name,
+        resume_text=resume_text,
+        job_title=job.title,
+        job_skills=job.skills or [],
+        job_requirements=job.technical_requirements or []
+    )
+
+    # 3. Check if candidate already registered
+    stmt = select(Candidate).where(Candidate.job_id == job_id, Candidate.email == email)
     result = await db.execute(stmt)
     existing = result.scalar_one_or_none()
 
     if existing:
         token = existing.invite_token or str(uuid.uuid4())
         existing.invite_token = token
+        existing.match_score = match_result.get("match_score", existing.match_score)
+        existing.matched_skills = match_result.get("matched_skills", existing.matched_skills)
+        existing.missing_skills = match_result.get("missing_skills", existing.missing_skills)
         await db.commit()
         await db.refresh(existing)
         return GenerateLinkResponse(
@@ -143,23 +165,20 @@ async def apply_for_job(
             status=existing.status,
             invite_token=token,
             invite_url=f"http://localhost:3000/interview/{token}",
-            message="Welcome back! Your application invite token has been retrieved."
+            message="Application updated. Invite token retrieved."
         )
 
     cand_id = str(uuid.uuid4())
     invite_token = str(uuid.uuid4())
 
-    matched = job.skills[:3] if job.skills else ["General Technical Skills"]
-    missing = job.skills[3:] if job.skills and len(job.skills) > 3 else []
-
     cand = Candidate(
         id=cand_id,
         job_id=job_id,
-        name=payload.name,
-        email=payload.email,
-        match_score=78.5,
-        matched_skills=matched,
-        missing_skills=missing,
+        name=name,
+        email=email,
+        match_score=match_result.get("match_score", 80.0),
+        matched_skills=match_result.get("matched_skills", []),
+        missing_skills=match_result.get("missing_skills", []),
         status="link_sent",
         invite_token=invite_token
     )
@@ -173,6 +192,7 @@ async def apply_for_job(
         status=cand.status,
         invite_token=invite_token,
         invite_url=f"http://localhost:3000/interview/{invite_token}",
-        message="Application submitted successfully."
+        message="Application submitted and CV skill comparison completed successfully."
     )
+
 

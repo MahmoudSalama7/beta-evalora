@@ -57,7 +57,7 @@ async def evaluate_turn(
     candidate_answer: str
 ) -> Dict[str, Any]:
     """
-    Evaluate candidate's answer against Qdrant ground-truth chunks for the specified job_id.
+    Evaluate candidate's answer against Qdrant ground-truth chunks for the specified job_id using Groq LLM.
     Returns structured evaluation dictionary:
     {
       "technical_score": float,
@@ -70,13 +70,16 @@ async def evaluate_turn(
     # 1. Retrieve ground-truth chunks from Qdrant under job_id
     context_chunks = await retrieve_ground_truth_context(job_id, f"{question} {candidate_answer}", limit=3)
     
-    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    if api_key:
+    groq_api_key = os.getenv("GROQ_API_KEY")
+    groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+
+    if groq_api_key:
         try:
-            from google import genai
-            client = genai.Client(api_key=api_key)
+            from groq import Groq
+            client = Groq(api_key=groq_api_key)
             prompt = f"""
-            You are an expert technical interviewer judge evaluating a candidate's answer.
+            You are an expert technical interviewer judge evaluating a candidate's response.
             
             Question Asked:
             {question}
@@ -85,26 +88,53 @@ async def evaluate_turn(
             {candidate_answer}
             
             Ground-Truth Context / Rubric Chunks:
-            {"".join(context_chunks)}
+            {"".join(context_chunks) if context_chunks else "No additional context."}
             
-            Provide a strict evaluation JSON response with the following exact keys:
+            Provide a strict evaluation JSON with the following exact keys:
             - "technical_score": float between 0.0 and 10.0
             - "clarity_score": float between 0.0 and 10.0
             - "covered_points": list of strings detailing key points the candidate addressed correctly
             - "missing_points": list of strings detailing key technical aspects the candidate omitted or answered incorrectly
-            - "summary": string executive summary of the turn performance
-
-            Return raw valid JSON ONLY without markdown formatting.
+            - "summary": string executive summary of turn performance
             """
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt
+            chat_completion = client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a precise technical interview judge AI. Output valid JSON only."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    }
+                ],
+                model=groq_model,
+                response_format={"type": "json_object"}
             )
+            raw_text = chat_completion.choices[0].message.content.strip()
+            data = json.loads(raw_text)
+            logger.info("Successfully evaluated turn via Groq LLM.")
+            return {
+                "technical_score": float(data.get("technical_score", 7.0)),
+                "clarity_score": float(data.get("clarity_score", 7.0)),
+                "covered_points": data.get("covered_points", []),
+                "missing_points": data.get("missing_points", []),
+                "summary": data.get("summary", "Evaluation completed.")
+            }
+        except Exception as e:
+            logger.warning(f"Groq LLM turn evaluation failed ({e}). Trying fallback...")
+
+    gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if gemini_key:
+        try:
+            from google import genai
+            client = genai.Client(api_key=gemini_key)
+            prompt = f"Evaluate turn: Q: {question}\nA: {candidate_answer}\nContext: {''.join(context_chunks)}\nReturn JSON with technical_score, clarity_score, covered_points, missing_points, summary."
+            response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
             raw_text = response.text.strip()
             if raw_text.startswith("```"):
                 raw_text = re.sub(r"^```[a-z]*\n?", "", raw_text)
                 raw_text = re.sub(r"\n?```$", "", raw_text)
-                
             data = json.loads(raw_text)
             return {
                 "technical_score": float(data.get("technical_score", 7.0)),
@@ -114,6 +144,7 @@ async def evaluate_turn(
                 "summary": data.get("summary", "Evaluation completed.")
             }
         except Exception as e:
-            logger.warning(f"LLM turn evaluation failed or unconfigured: {e}. Using heuristic evaluator.")
-            
+            logger.warning(f"Gemini LLM turn evaluation failed: {e}")
+
     return heuristic_evaluator(question, candidate_answer, context_chunks)
+
