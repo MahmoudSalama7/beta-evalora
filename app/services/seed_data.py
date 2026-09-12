@@ -5,6 +5,25 @@ from sqlalchemy import select
 
 from app.models.interview import Job, Candidate, CandidateReport, Interview, InterviewTurn
 
+DEFAULT_JOBS = [
+    {
+        "title": "Senior Full-Stack AI Engineer",
+        "seniority_level": "Senior",
+        "description": "We are looking for a Senior Full-Stack Engineer with 4+ years of experience in Python, FastAPI, React, and Async PostgreSQL. You will design scalable AI-driven interview services and integrate Qdrant vector databases for RAG question generation.",
+        "skills": ["Python", "FastAPI", "React", "TypeScript", "Qdrant", "PostgreSQL", "LangChain"],
+        "technical_requirements": ["4+ years software engineering experience", "Proficiency in FastAPI & AsyncIO", "Hands-on experience with Qdrant / Vector Databases"],
+        "core_responsibilities": ["Architect high-availability AI assessment pipelines", "Integrate RAG vector engines with Qdrant", "Develop responsive Next.js frontend interfaces"]
+    },
+    {
+        "title": "Lead Backend Infrastructure Engineer",
+        "seniority_level": "Lead",
+        "description": "Lead architect responsible for building high-concurrency microservices, managing PostgreSQL & Redis connection pools, orchestrating Docker containers, and optimizing real-time WebSocket communication channels.",
+        "skills": ["Python", "FastAPI", "PostgreSQL", "Docker", "Redis", "WebSockets", "AsyncPG"],
+        "technical_requirements": ["5+ years distributed systems background", "Deep understanding of AsyncPG connection pooling", "Expertise in Docker & Kubernetes deployment"],
+        "core_responsibilities": ["Maintain system reliability and sub-second API latency", "Design multi-tenant database isolation strategies", "Lead backend infrastructure roadmap"]
+    }
+]
+
 SEED_CANDIDATES = [
     {
         "name": "Sarah Jenkins",
@@ -125,6 +144,34 @@ SEED_CANDIDATES = [
     }
 ]
 
+async def seed_initial_jobs(db: AsyncSession) -> list:
+    """Seed default initial job requisitions if PostgreSQL database is empty."""
+    stmt = select(Job)
+    result = await db.execute(stmt)
+    existing_jobs = result.scalars().all()
+    if existing_jobs:
+        return list(existing_jobs)
+
+    created_jobs = []
+    for item in DEFAULT_JOBS:
+        job_id = str(uuid.uuid4())
+        job_entity = Job(
+            id=job_id,
+            title=item["title"],
+            description=item["description"],
+            seniority_level=item["seniority_level"],
+            skills=item["skills"],
+            technical_requirements=item["technical_requirements"],
+            core_responsibilities=item["core_responsibilities"]
+        )
+        db.add(job_entity)
+        await db.flush()
+        await seed_candidates_for_job(job_id, db)
+        created_jobs.append(job_entity)
+
+    await db.commit()
+    return created_jobs
+
 async def seed_candidates_for_job(job_id: str, db: AsyncSession):
     """Seed initial mock candidate records for a job if none exist."""
     stmt = select(Candidate).where(Candidate.job_id == job_id)
@@ -171,7 +218,6 @@ async def seed_candidates_for_job(job_id: str, db: AsyncSession):
             )
             db.add(report)
 
-            # Also create corresponding Interview and InterviewTurn records
             interview = Interview(
                 id=interview_id,
                 job_id=job_id,

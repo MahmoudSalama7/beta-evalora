@@ -14,9 +14,10 @@ from app.schemas.job import (
 )
 from app.services.job_extractor import extract_job_metadata
 from app.services.rag_engine import index_job_knowledge_base
-from app.services.seed_data import seed_candidates_for_job
+from app.services.seed_data import seed_candidates_for_job, seed_initial_jobs
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
+
 
 @router.post(
     "",
@@ -116,6 +117,9 @@ async def get_jobs_overview(db: AsyncSession = Depends(get_db)):
     result = await db.execute(stmt)
     jobs = result.scalars().all()
 
+    if not jobs:
+        jobs = await seed_initial_jobs(db)
+
     items: List[JobItemWithMetrics] = []
     total_candidates = 0
     total_invited = 0
@@ -132,7 +136,7 @@ async def get_jobs_overview(db: AsyncSession = Depends(get_db)):
 
         applied = len(candidates)
         invited = sum(1 for c in candidates if c.status in ["link_sent", "interview_completed"])
-        completed = sum(1 for c in candidates if c.status == "interview_completed")
+        completed = sum(1 for c in candidates if c.status in ["interview_completed", "completed"])
         
         scores = [c.match_score for c in candidates]
         avg_score = float(round(sum(scores) / len(scores), 1)) if scores else 0.0
@@ -180,10 +184,20 @@ async def get_job(job_id: str, db: AsyncSession = Depends(get_db)):
     """Retrieve single job details from database by job_id."""
     job = await db.get(Job, job_id)
     if not job:
+        jobs_stmt = select(Job).order_by(Job.created_at.desc())
+        jobs_res = await db.execute(jobs_stmt)
+        all_jobs = jobs_res.scalars().all()
+        if not all_jobs:
+            all_jobs = await seed_initial_jobs(db)
+        if all_jobs:
+            job = all_jobs[0]
+
+    if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Job with ID '{job_id}' not found."
         )
+
 
     # Ensure candidates seeded
     await seed_candidates_for_job(job_id, db)
