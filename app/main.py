@@ -53,11 +53,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include Routers
-app.include_router(jobs_router, prefix=settings.API_V1_STR)
+# Include Routers (Sub-path endpoints evaluated before generic parameter routes)
 app.include_router(candidates_router, prefix=settings.API_V1_STR)
+app.include_router(jobs_router, prefix=settings.API_V1_STR)
 app.include_router(interviews_router, prefix=settings.API_V1_STR)
 app.include_router(ws_router, prefix=settings.API_V1_STR)
+
 
 @app.get("/", tags=["Health"])
 async def root():
