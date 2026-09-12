@@ -13,6 +13,98 @@ export interface JobData {
   message: string;
 }
 
+export interface JobItemWithMetrics {
+  id: string;
+  title: string;
+  description: string;
+  seniority_level: string;
+  status: string;
+  created_at: string;
+  skills: string[];
+  technical_requirements: string[];
+  core_responsibilities: string[];
+  applied_count: number;
+  invited_count: number;
+  completed_count: number;
+  avg_match_score: number;
+}
+
+export interface JobsOverviewResponse {
+  total_active_jobs: number;
+  total_candidates_applied: number;
+  completion_rate_percentage: number;
+  platform_avg_match_score: number;
+  jobs: JobItemWithMetrics[];
+}
+
+export interface JobDetailResponse {
+  id: string;
+  title: string;
+  description: string;
+  skills: string[];
+  technical_requirements: string[];
+  seniority_level: string;
+  core_responsibilities: string[];
+  status: string;
+  created_at: string;
+  rubric_settings: Record<string, any>;
+  indexed_chunks: number;
+  applied_count: number;
+  invited_count: number;
+  completed_count: number;
+  avg_match_score: number;
+}
+
+export interface CandidateData {
+  candidate_id: string;
+  job_id: string;
+  name: string;
+  email: string;
+  match_score: number;
+  matched_skills: string[];
+  missing_skills: string[];
+  status: "applied" | "link_sent" | "interview_completed" | string;
+  interview_id?: string | null;
+  invite_url?: string | null;
+}
+
+export interface GenerateLinkResponse {
+  candidate_id: string;
+  job_id: string;
+  status: string;
+  invite_token: string;
+  invite_url: string;
+  message: string;
+}
+
+export interface CandidateReportTurn {
+  turn_index: number;
+  question: string;
+  candidate_transcript?: string | null;
+  qdrant_ground_truth_context?: string | null;
+  covered_points: string[];
+  missing_points: string[];
+  turn_score?: number | null;
+  timestamp_seconds: number;
+}
+
+export interface CandidateReportData {
+  candidate_id: string;
+  candidate_name: string;
+  candidate_email: string;
+  job_id: string;
+  job_title: string;
+  overall_score: number;
+  recommendation: "Strong Hire" | "Hire" | "Needs Review" | "Reject" | string;
+  technical_score: number;
+  communication_score: number;
+  confidence_score: number;
+  tab_switch_count: number;
+  gaze_warnings: number;
+  recording_url?: string | null;
+  turns: CandidateReportTurn[];
+}
+
 export interface CandidateView {
   id: string;
   job_id: string;
@@ -45,6 +137,7 @@ export interface HRReport {
   summary: string;
 }
 
+// API Functions
 
 export async function createJob(formData: FormData): Promise<JobData> {
   const response = await fetch(`${API_BASE}/jobs`, {
@@ -60,10 +153,77 @@ export async function createJob(formData: FormData): Promise<JobData> {
   return response.json();
 }
 
+export async function getJobsOverview(): Promise<JobsOverviewResponse> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(`${API_BASE}/jobs`, { cache: "no-store", signal: controller.signal });
+    if (!response.ok) {
+      throw new Error("Failed to load jobs overview data");
+    }
+    return await response.json();
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export async function getJobDetail(jobId: string): Promise<JobDetailResponse> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("Failed to fetch job details");
+  }
+  return response.json();
+}
+
 export async function getJob(jobId: string): Promise<JobData> {
-  const response = await fetch(`${API_BASE}/jobs/${jobId}`);
+  const response = await fetch(`${API_BASE}/jobs/${jobId}`, { cache: "no-store" });
   if (!response.ok) {
     throw new Error("Job not found");
+  }
+  return response.json();
+}
+
+export async function getJobCandidates(jobId: string): Promise<CandidateData[]> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/candidates`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("Failed to fetch candidates");
+  }
+  return response.json();
+}
+
+export async function generateInterviewLink(jobId: string, candidateId: string): Promise<GenerateLinkResponse> {
+  const response = await fetch(`${API_BASE}/interviews/generate-link`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job_id: jobId, candidate_id: candidateId }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to generate interview invite link");
+  }
+
+  return response.json();
+}
+
+export async function applyForJob(jobId: string, name: string, email: string): Promise<GenerateLinkResponse> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/apply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, email }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ detail: "Failed to submit application" }));
+    throw new Error(err.detail || "Failed to submit application");
+  }
+
+  return response.json();
+}
+
+export async function getCandidateAIReport(jobId: string, candidateId: string): Promise<CandidateReportData> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/candidates/${candidateId}/report`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("Failed to fetch candidate AI report");
   }
   return response.json();
 }
@@ -83,7 +243,7 @@ export async function createInterview(jobId: string, candidateId: string): Promi
 }
 
 export async function getCandidateInterview(interviewId: string): Promise<CandidateView> {
-  const response = await fetch(`${API_BASE}/interviews/${interviewId}`);
+  const response = await fetch(`${API_BASE}/interviews/${interviewId}`, { cache: "no-store" });
   if (!response.ok) {
     throw new Error("Interview not found");
   }
@@ -91,7 +251,7 @@ export async function getCandidateInterview(interviewId: string): Promise<Candid
 }
 
 export async function getHRReport(interviewId: string): Promise<HRReport> {
-  const response = await fetch(`${API_BASE}/interviews/${interviewId}/report`);
+  const response = await fetch(`${API_BASE}/interviews/${interviewId}/report`, { cache: "no-store" });
   if (!response.ok) {
     throw new Error("Failed to load HR interview report");
   }

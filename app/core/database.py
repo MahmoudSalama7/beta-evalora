@@ -19,7 +19,7 @@ try:
     else:
         try:
             import asyncpg
-            DATABASE_URL = "postgresql+asyncpg://evalora:evalorasecret@localhost:5432/evalora_db"
+            DATABASE_URL = "postgresql+asyncpg://evalora:evalorasecret@localhost:5433/evalora_db"
             engine = create_async_engine(DATABASE_URL, echo=False)
         except ImportError:
             import aiosqlite
@@ -48,6 +48,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def init_db():
     if engine is not None:
         try:
+            import app.models  # Register models with Base.metadata
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
         except Exception as e:

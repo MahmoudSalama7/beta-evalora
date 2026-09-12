@@ -26,6 +26,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
 
   const navItems = [
+    { name: "Jobs Overview", href: "/dashboard/jobs", icon: Briefcase },
     { name: "Create Job", href: "/dashboard/jobs/new", icon: Briefcase },
     { name: "Candidates", href: "/dashboard/candidates", icon: Users },
     { name: "Interview Reports", href: "/dashboard/interviews/demo/report", icon: Video },

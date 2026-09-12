@@ -24,6 +24,7 @@ class Job(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     interviews: Mapped[list["Interview"]] = relationship("Interview", back_populates="job", cascade="all, delete-orphan")
+    candidates: Mapped[list["Candidate"]] = relationship("Candidate", back_populates="job", cascade="all, delete-orphan")
 
 class Interview(Base):
     __tablename__ = "interviews"
@@ -53,3 +54,38 @@ class InterviewTurn(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     interview: Mapped["Interview"] = relationship("Interview", back_populates="turns")
+
+class Candidate(Base):
+    __tablename__ = "candidates"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
+    job_id: Mapped[str] = mapped_column(String, ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    match_score: Mapped[float] = mapped_column(Float, default=0.0)
+    matched_skills: Mapped[dict | list] = mapped_column(JSON, default=list)
+    missing_skills: Mapped[dict | list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(50), default="applied")  # applied, link_sent, interview_completed
+    interview_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    invite_token: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    job: Mapped["Job"] = relationship("Job", back_populates="candidates")
+
+class CandidateReport(Base):
+    __tablename__ = "candidate_reports"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
+    candidate_id: Mapped[str] = mapped_column(String, ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False)
+    job_id: Mapped[str] = mapped_column(String, nullable=False)
+    overall_score: Mapped[float] = mapped_column(Float, default=0.0)
+    recommendation: Mapped[str] = mapped_column(String(50), default="Needs Review")  # Strong Hire, Hire, Needs Review, Reject
+    technical_score: Mapped[float] = mapped_column(Float, default=0.0)
+    communication_score: Mapped[float] = mapped_column(Float, default=0.0)
+    confidence_score: Mapped[float] = mapped_column(Float, default=0.0)
+    tab_switch_count: Mapped[int] = mapped_column(Integer, default=0)
+    gaze_warnings: Mapped[int] = mapped_column(Integer, default=0)
+    recording_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    turns_detail: Mapped[dict | list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+

@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.core.database import init_db
 from app.core.qdrant import init_qdrant_collections
 from app.api.v1.jobs import router as jobs_router
+from app.api.v1.candidates import router as candidates_router
 from app.api.v1.interviews import router as interviews_router
 from app.api.websockets.live_interview import router as ws_router
 
@@ -54,6 +55,7 @@ app.add_middleware(
 
 # Include Routers
 app.include_router(jobs_router, prefix=settings.API_V1_STR)
+app.include_router(candidates_router, prefix=settings.API_V1_STR)
 app.include_router(interviews_router, prefix=settings.API_V1_STR)
 app.include_router(ws_router, prefix=settings.API_V1_STR)
 

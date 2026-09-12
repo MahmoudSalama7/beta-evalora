@@ -4,6 +4,7 @@ import React, { useState } from "react";
 
 
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Briefcase,
   FileText,
@@ -14,7 +15,10 @@ import {
   AlertCircle,
   FileCheck,
   X,
-  Loader2
+  Loader2,
+  ArrowRight,
+  Database,
+  Layers
 } from "lucide-react";
 import { createJob, JobData } from "@/lib/api";
 
@@ -303,9 +307,25 @@ export default function CreateJobPage() {
                   </ul>
                 </div>
 
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-slate-400">
-                  <span>Qdrant Knowledge Base:</span>
-                  <span className="font-bold text-emerald-400">{extractedData.indexed_chunks} Chunks Indexed</span>
+                <div className="p-4 rounded-xl bg-slate-950 border border-emerald-500/30 space-y-3">
+                  <div className="flex items-center justify-between text-slate-300">
+                    <span className="flex items-center gap-1.5 font-semibold text-xs">
+                      <Database className="w-4 h-4 text-emerald-400" /> Qdrant Knowledge Base:
+                    </span>
+                    <span className="font-extrabold text-emerald-400 text-sm bg-emerald-500/10 px-2.5 py-0.5 rounded-md border border-emerald-500/20">
+                      {extractedData.indexed_chunks} Chunks Indexed
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Text description & reference materials chunked, embedded with 768-dim dense vectors, and stored under <code className="text-indigo-400">job_id</code> payload tag for multi-tenant isolation.
+                  </p>
+                  <Link
+                    href={`/dashboard/jobs/${extractedData.id}`}
+                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-4 rounded-lg transition-all shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 text-xs group"
+                  >
+                    <span>View Position Pipeline & Qdrant Grounding</span>
+                    <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
+                  </Link>
                 </div>
               </div>
             ) : (

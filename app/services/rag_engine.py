@@ -84,9 +84,14 @@ async def index_job_knowledge_base(
     Ensures strict multi-tenant isolation by tagging all points with 'job_id'.
     """
     points = []
+    print(f"\n========================================================")
+    print(f"[QDRANT RAG ENGINE] Chunking & Embedding Job: '{title}' (ID: {job_id})")
+    print(f"========================================================")
     
     # 1. Chunk and index plain-text job description
     desc_chunks = chunk_text(f"Job Title: {title}\nDescription: {description}")
+    print(f"[CHUNKER] Generated {len(desc_chunks)} text chunk(s) from Job Description.")
+
     for idx, chunk in enumerate(desc_chunks):
         chunk_id = f"{job_id}_jd_{idx}"
         payload = {
@@ -97,6 +102,7 @@ async def index_job_knowledge_base(
             "source": "job_description"
         }
         vector = generate_embeddings([chunk])[0]
+        print(f"  └─ Chunk #{idx + 1} ({len(chunk)} chars) -> Generated {len(vector)}-dim dense embedding vector.")
         points.append(
             models.PointStruct(
                 id=str(uuid.uuid4()),
@@ -114,6 +120,7 @@ async def index_job_knowledge_base(
             
             if extracted_text:
                 res_chunks = chunk_text(extracted_text)
+                print(f"[PDF GROUNDING] Parsed document '{filename}' into {len(res_chunks)} grounding chunk(s).")
                 for idx, chunk in enumerate(res_chunks):
                     chunk_id = f"{job_id}_res_{idx}"
                     payload = {
@@ -124,6 +131,7 @@ async def index_job_knowledge_base(
                         "source": "interview_resource"
                     }
                     vector = generate_embeddings([chunk])[0]
+                    print(f"  └─ Resource Chunk #{idx + 1} ({len(chunk)} chars) -> Generated {len(vector)}-dim dense embedding vector.")
                     points.append(
                         models.PointStruct(
                             id=str(uuid.uuid4()),
@@ -138,9 +146,13 @@ async def index_job_knowledge_base(
                 collection_name=COLLECTION_JOB_KB,
                 points=points
             )
-            logger.info(f"Upserted {len(points)} points for job_id '{job_id}' into Qdrant collection '{COLLECTION_JOB_KB}'.")
+            success_msg = f"[QDRANT INDEXED] Successfully stored {len(points)} vector point(s) in Qdrant collection '{COLLECTION_JOB_KB}' tagged with job_id='{job_id}'."
+            print(f"{success_msg}\n========================================================\n")
+            logger.info(success_msg)
         except Exception as e:
-            logger.warning(f"Qdrant client upsert warning for job_id '{job_id}': {e}")
+            warn_msg = f"Qdrant client upsert warning for job_id '{job_id}': {e}"
+            print(f"[QDRANT WARNING] {warn_msg}")
+            logger.warning(warn_msg)
             
     return len(points)
 
