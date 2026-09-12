@@ -131,9 +131,16 @@ export default function SingleJobPipelinePage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "interview_completed":
+      case "completed":
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
             ● Interview Completed
+          </span>
+        );
+      case "in_progress":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-violet-500/10 text-violet-400 border border-violet-500/20">
+            ● In Progress
           </span>
         );
       case "link_sent":
@@ -150,6 +157,7 @@ export default function SingleJobPipelinePage() {
         );
     }
   };
+
 
   if (loading) {
     return (
@@ -465,7 +473,7 @@ export default function SingleJobPipelinePage() {
                         </div>
                       )}
 
-                      {cand.status === "interview_completed" && (
+                      {(cand.status === "interview_completed" || cand.status === "completed" || cand.status === "in_progress") && (
                         <Link
                           href={`/dashboard/jobs/${jobId}/candidates/${cand.candidate_id}`}
                           className="inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-md shadow-emerald-600/20 transition-all"
@@ -475,6 +483,7 @@ export default function SingleJobPipelinePage() {
                           <ChevronRight className="w-3.5 h-3.5" />
                         </Link>
                       )}
+
                     </div>
                   </td>
                 </tr>

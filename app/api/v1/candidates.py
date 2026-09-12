@@ -45,8 +45,29 @@ async def get_job_candidates(
     result = await db.execute(stmt)
     candidates = result.scalars().all()
 
+    needs_commit = False
     res = []
     for c in candidates:
+        int_stmt = select(Interview).where(Interview.candidate_id == c.id)
+        int_res = await db.execute(int_stmt)
+        interviews = int_res.scalars().all()
+
+        current_status = c.status
+        if interviews:
+            latest_int = interviews[-1]
+            if latest_int.status == "completed":
+                current_status = "interview_completed"
+                if c.status != "interview_completed" or c.interview_id != latest_int.id:
+                    c.status = "interview_completed"
+                    c.interview_id = latest_int.id
+                    needs_commit = True
+            elif latest_int.status == "in_progress" and c.status not in ["interview_completed", "completed"]:
+                current_status = "in_progress"
+                if c.status != "in_progress" or c.interview_id != latest_int.id:
+                    c.status = "in_progress"
+                    c.interview_id = latest_int.id
+                    needs_commit = True
+
         invite_url = f"http://localhost:3000/interview/{c.invite_token}" if c.invite_token else None
         res.append(
             CandidateResponse(
@@ -57,12 +78,17 @@ async def get_job_candidates(
                 match_score=c.match_score,
                 matched_skills=c.matched_skills or [],
                 missing_skills=c.missing_skills or [],
-                status=c.status,
+                status=current_status,
                 interview_id=c.interview_id,
                 invite_url=invite_url
             )
         )
+
+    if needs_commit:
+        await db.commit()
+
     return res
+
 
 @router.post(
     "/interviews/generate-link",
