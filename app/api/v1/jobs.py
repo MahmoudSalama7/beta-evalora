@@ -191,6 +191,7 @@ async def get_job(job_id: str, db: AsyncSession = Depends(get_db)):
             all_jobs = await seed_initial_jobs(db)
         if all_jobs:
             job = all_jobs[0]
+            job_id = job.id
 
     if not job:
         raise HTTPException(
@@ -200,9 +201,9 @@ async def get_job(job_id: str, db: AsyncSession = Depends(get_db)):
 
 
     # Ensure candidates seeded
-    await seed_candidates_for_job(job_id, db)
+    await seed_candidates_for_job(job.id, db)
 
-    cand_stmt = select(Candidate).where(Candidate.job_id == job_id)
+    cand_stmt = select(Candidate).where(Candidate.job_id == job.id)
     cand_res = await db.execute(cand_stmt)
     candidates = cand_res.scalars().all()
 

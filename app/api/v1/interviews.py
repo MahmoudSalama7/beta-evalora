@@ -246,15 +246,36 @@ async def get_candidate_ai_report(
     """
     job = await db.get(Job, job_id)
     if not job:
+        jobs_stmt = select(Job).order_by(Job.created_at.desc())
+        jobs_res = await db.execute(jobs_stmt)
+        all_jobs = jobs_res.scalars().all()
+        if not all_jobs:
+            all_jobs = await seed_initial_jobs(db)
+        if all_jobs:
+            job = all_jobs[0]
+            job_id = job.id
+
+    if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Job with ID '{job_id}' not found."
         )
 
     # Seed candidates if not present
-    await seed_candidates_for_job(job_id, db)
+    await seed_candidates_for_job(job.id, db)
 
     candidate = await db.get(Candidate, candidate_id)
+    if not candidate:
+        # Fallback search by candidate ID
+        cand_stmt = select(Candidate).where(Candidate.id == candidate_id)
+        cand_res = await db.execute(cand_stmt)
+        candidate = cand_res.scalar_one_or_none()
+        if not candidate:
+            # Fallback to first available candidate in job
+            cand_stmt = select(Candidate).where(Candidate.job_id == job.id)
+            cand_res = await db.execute(cand_stmt)
+            candidate = cand_res.scalars().first()
+
     if not candidate:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
